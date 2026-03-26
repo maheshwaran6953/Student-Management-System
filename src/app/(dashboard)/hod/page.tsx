@@ -9,9 +9,18 @@ const { data: { user } } = await supabase.auth.getUser()
 if (!user) redirect('/login')
 
 // 2. Fetch students from Supabase
+// Fetch students JOINED with their fee records
 const { data: students, error } = await supabase
     .from('students')
-    .select('*')
+    .select(`
+    *,
+    fees (
+        total_fee,
+        paid_fee,
+        balance_fee,
+        status
+    )
+    `)
     .order('reg_no', { ascending: true })
 
 const handleLogout = async () => {
@@ -51,6 +60,9 @@ return (
             <th className="p-4 font-semibold text-gray-700">Name</th>
             <th className="p-4 font-semibold text-gray-700">Section</th>
             <th className="p-4 font-semibold text-gray-700">Mobile</th>
+            <th className="p-4 font-semibold text-gray-700 text-right">Total Fee</th>
+            <th className="p-4 font-semibold text-gray-700 text-right">Paid</th>
+            <th className="p-4 font-semibold text-gray-700 text-center">Status</th>
             </tr>
         </thead>
         <tbody>
@@ -64,6 +76,17 @@ return (
                 </span>
                 </td>
                 <td className="p-4 text-gray-600">{student.mobile}</td>
+                <td className="p-4 text-right text-gray-600">₹{student.fees?.total_fee || 0}</td>
+                <td className="p-4 text-right text-green-600 font-medium">₹{student.fees?.paid_fee || 0}</td>
+                <td className="p-4 text-center">
+                <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                    student.fees?.status === 'PAID' ? 'text-green-600 bg-green-100 border-green-200' :
+                    student.fees?.status === 'PARTIAL' ? 'text-orange-600 bg-orange-100 border-orange-200' :
+                    'text-red-600 bg-red-100 border-red-200'
+                }`}>
+                    {student.fees?.status || 'NO DATA'}
+                </span>
+                </td>
             </tr>
             ))}
             
