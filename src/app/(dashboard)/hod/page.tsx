@@ -1,27 +1,21 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
+import { approveRequest } from './actions'
 
 export default async function HodDashboard() {
 const supabase = await createClient()
 
-// 1. Check if user is logged in
-const { data: { user } } = await supabase.auth.getUser()
-if (!user) redirect('/login')
-
-// 2. Fetch students from Supabase
-// Fetch students JOINED with their fee records
-const { data: students, error } = await supabase
+// 1. Fetch Students (Existing)
+const { data: students } = await supabase
     .from('students')
-    .select(`
-    *,
-    fees (
-        total_fee,
-        paid_fee,
-        balance_fee,
-        status
-    )
-    `)
-    .order('reg_no', { ascending: true })
+    .select('*, fees(*)')
+    .order('reg_no')
+
+// 2. Fetch Pending Requests (New!)
+const { data: requests } = await supabase
+    .from('fee_update_requests')
+    .select('*, students(name, reg_no)')
+    .eq('status', 'PENDING')
 
 const handleLogout = async () => {
     'use server'
@@ -31,75 +25,85 @@ const handleLogout = async () => {
 }
 
 return (
-    <div className="p-8 max-w-6xl mx-auto">
-    <div className="flex justify-between items-center mb-8">
-        <div>
-        <h1 className="text-3xl font-bold text-gray-800">HOD Dashboard</h1>
-        <p className="text-gray-500">Department Student Records</p>
-        </div>
-        <form action={handleLogout}>
-        <button className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition">
-            Logout
-        </button>
-        </form>
+    <div className="p-8 max-w-6xl mx-auto space-y-10">
+    <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">HOD Dashboard</h1>
+        <form action={handleLogout}><button className="text-red-500 underline">Logout</button></form>
     </div>
 
-    {/* Error Message if fetch fails */}
-    {error && (
-        <div className="p-4 mb-4 text-red-700 bg-red-100 rounded-lg">
-        Error loading students: {error.message}
-        </div>
-    )}
+    {/* --- PENDING REQUESTS SECTION --- */}
+    <section>
+        <h2 className="text-xl font-semibold mb-4 text-orange-600">Pending Approvals ({requests?.length || 0})</h2>
+        {requests && requests.length > 0 ? (
+        <div className="grid gap-4">
+            {requests.map((req: any) => (
+            <div key={req.id} className="p-4 bg-orange-50 border border-orange-200 rounded-lg flex justify-between items-center">
+                <div>
+                <p className="font-bold">{req.students.name} ({req.students.reg_no})</p>
+                <p className="text-sm text-gray-600">Amount Paid: <span className="font-semibold text-green-700">₹{req.amount_paid_new}</span></p>
+                <p className="text-xs text-gray-400 italic">Notes: {req.notes}</p>
+                </div>
+                <form action={async (formData: FormData) => {
+'use server'
+const rid = formData.get('requestId') as string
+const sid = formData.get('studentId') as string
+const amt = formData.get('amount') as string
 
-    {/* Students Table */}
-    <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
-        <table className="w-full text-left border-collapse">
-        <thead>
-            <tr className="bg-gray-50 border-b">
-            <th className="p-4 font-semibold text-gray-700">Reg No</th>
-            <th className="p-4 font-semibold text-gray-700">Name</th>
-            <th className="p-4 font-semibold text-gray-700">Section</th>
-            <th className="p-4 font-semibold text-gray-700">Mobile</th>
-            <th className="p-4 font-semibold text-gray-700 text-right">Total Fee</th>
-            <th className="p-4 font-semibold text-gray-700 text-right">Paid</th>
-            <th className="p-4 font-semibold text-gray-700 text-center">Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {students?.map((student) => (
-            <tr key={student.id} className="border-b hover:bg-gray-50 transition">
-                <td className="p-4 text-gray-600 font-mono">{student.reg_no}</td>
-                <td className="p-4 text-gray-800 font-medium">{student.name}</td>
-                <td className="p-4">
-                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-bold">
-                    SEC {student.section}
-                </span>
-                </td>
-                <td className="p-4 text-gray-600">{student.mobile}</td>
-                <td className="p-4 text-right text-gray-600">₹{student.fees?.total_fee || 0}</td>
-                <td className="p-4 text-right text-green-600 font-medium">₹{student.fees?.paid_fee || 0}</td>
-                <td className="p-4 text-center">
-                <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                    student.fees?.status === 'PAID' ? 'text-green-600 bg-green-100 border-green-200' :
-                    student.fees?.status === 'PARTIAL' ? 'text-orange-600 bg-orange-100 border-orange-200' :
-                    'text-red-600 bg-red-100 border-red-200'
-                }`}>
-                    {student.fees?.status || 'NO DATA'}
-                </span>
-                </td>
-            </tr>
+// We call the action and pass the data from the hidden inputs
+await approveRequest(rid, sid, parseFloat(amt))
+}}>
+{/* These hidden inputs carry the data to the server action */}
+<input type="hidden" name="requestId" value={req.id} />
+<input type="hidden" name="studentId" value={req.student_id} />
+<input type="hidden" name="amount" value={req.amount_paid_new} />
+
+<button 
+    type="submit"
+    className="bg-green-600 text-white px-4 py-2 rounded font-medium hover:bg-green-700 transition active:scale-95"
+>
+    Approve
+</button>
+</form>
+            </div>
             ))}
-            
-            {students?.length === 0 && (
+        </div>
+        ) : (
+        <p className="text-gray-500 italic">No pending requests at the moment.</p>
+        )}
+    </section>
+
+    {/* --- STUDENT LIST SECTION --- */}
+    <section>
+        <h2 className="text-xl font-semibold mb-4">All Students</h2>
+        <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
+        <table className="w-full text-left">
+            <thead className="bg-gray-50 border-b">
             <tr>
-                <td colSpan={4} className="p-8 text-center text-gray-500">
-                No students found in the database.
-                </td>
+                <th className="p-4">Student</th>
+                <th className="p-4">Total Fee</th>
+                <th className="p-4">Paid</th>
+                <th className="p-4">Status</th>
             </tr>
-            )}
-        </tbody>
+            </thead>
+            <tbody>
+            {students?.map((s) => (
+                <tr key={s.id} className="border-b">
+                <td className="p-4">{s.name} <br/><span className="text-xs text-gray-400">{s.reg_no}</span></td>
+                <td className="p-4">₹{s.fees?.total_fee}</td>
+                <td className="p-4">₹{s.fees?.paid_fee}</td>
+                <td className="p-4">
+                    <span className={`px-2 py-1 rounded text-xs font-bold ${
+                    s.fees?.status === 'PAID' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                    {s.fees?.status}
+                    </span>
+                </td>
+                </tr>
+            ))}
+            </tbody>
         </table>
-    </div>
+        </div>
+    </section>
     </div>
 )
 }
