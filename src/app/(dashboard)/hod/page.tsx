@@ -1,6 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
-import { approveRequest, rejectRequest } from './actions'
+import { approveRequest, rejectRequest, registerStudent  } from './actions'
 import { getRole } from '@/utils/supabase/checkRole'
 import Link from 'next/link'
 
